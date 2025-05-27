@@ -164,29 +164,34 @@ const onCopy = async (cmd) => {
   cmd.separator = ex3(cmd) ? cmd.separator : defaultStorage.separator;
   cmd.exoptions = exOptions(cmd);
   cmd.target = {tab:'tab', window:'window', all:'all'}[cmd.target] ?? 'tab';
-  cmd.tab = cmd.tab ?? (await chrome.tabs.query({currentWindow:true, active:true}))[0];
-  // 備考：ポップアップ用（ポップアップを開く、コピー完了通知）
-  
-  const targetQuery = {
-    'tab': {currentWindow:true, highlighted:true}, 
-    'window': {currentWindow:true}, 
-    'all': {},
-  }[cmd.target];
+  const targetQuery = (() => {
+    if (cmd.target === "window" && cmd.tab?.windowId) {
+      return {windowId: cmd.tab.windowId};
+    } else if (cmd.target === "tab" && cmd.tab?.id) {
+      return {windowId: cmd.tab.windowId, id: cmd.tab.id};
+    } else {
+      return {
+        'tab': {currentWindow:true, highlighted:true},
+        'window': {currentWindow:true},
+        'all': {},
+      }[cmd.target];
+    }
+  })();
+
   if (ex3(cmd, 'exclude_pin')) {
     targetQuery.pinned = false;
   }
   if (cmd.info && cmd.target == 'window') {
-    // 回避策：#20 ウィンドウのコピーができないことがある
     delete targetQuery.currentWindow;
   }
-  
-  // すべてのタブ: {}
-  // カレントウィンドウのすべてのタブ:   {currentWindow:true}
-  // カレントウィンドウの選択中のタブ:   {currentWindow:true, highlighted:true}
-  // カレントウィンドウのアクティブタブ: {currentWindow:true, active:true}
-  //const tabs = await chrome.tabs.query(targetQuery);
+
   const tabs = await tabsQuery(targetQuery);
+
   let temp = tabs;
+  if (cmd.info && cmd.target == 'window') {
+    // 取得したタブのwindowIdが一致するものだけにフィルタ
+    temp = tabs.filter(tab => tab.windowId === cmd.tab?.windowId);
+  }
   if (cmd.info && cmd.target == 'tab') {
     // 未選択タブのタブコンテキストメニューは、カレントタブとして扱わない
     if (!tabs.some(tab => tab.id === cmd.tab?.id)) {
